@@ -7,14 +7,15 @@ var start = require('./common'),
     mongoose = start.mongoose,
     random = require('../lib/utils').random,
     Schema = mongoose.Schema,
-    DocumentObjectId = mongoose.Types.ObjectId;
+    DocumentObjectId = mongoose.Types.ObjectId,
+    PromiseProvider = require('../lib/promise_provider');
 
 /**
  * Setup
  */
 
 var schema = new Schema({
-  title: String
+  title: { type: String, required: true }
 });
 
 
@@ -66,6 +67,30 @@ describe('model', function() {
       });
     });
 
+    it('should not cause unhandled reject promise', function(done) {
+      mongoose.Promise = global.Promise;
+      mongoose.Promise = require('bluebird');
+
+      B.create({title: 'reject promise'}, function(err, b) {
+        assert.ifError(err);
+
+        var perr = null;
+        var p = B.create({_id: b._id}, function(err) {
+          assert(err);
+          setTimeout(function() {
+            PromiseProvider.reset();
+            // perr should be null
+            done(perr);
+          }, 100);
+        });
+
+        p.catch(function(err) {
+          // should not go here
+          perr = err;
+        });
+      });
+    });
+
     it('returns a promise', function(done) {
       var p = B.create({title: 'returns promise'}, function() {
         assert.ok(p instanceof mongoose.Promise);
@@ -74,7 +99,7 @@ describe('model', function() {
     });
 
     it('creates in parallel', function(done) {
-      // we set the time out to be double that of the validator - 1 (so that running in serial will be greater then that)
+      // we set the time out to be double that of the validator - 1 (so that running in serial will be greater than that)
       this.timeout(1000);
       var db = start(),
           countPre = 0,
@@ -118,12 +143,11 @@ describe('model', function() {
       });
     });
 
-
     describe('callback is optional', function() {
       it('with one doc', function(done) {
         var p = B.create({title: 'optional callback'});
         p.then(function(doc) {
-          assert.equal('optional callback', doc.title);
+          assert.equal(doc.title, 'optional callback');
           done();
         }, done).end();
       });
@@ -131,8 +155,8 @@ describe('model', function() {
       it('with more than one doc', function(done) {
         var p = B.create({title: 'optional callback 2'}, {title: 'orient expressions'});
         p.then(function(doc1, doc2) {
-          assert.equal('optional callback 2', doc1.title);
-          assert.equal('orient expressions', doc2.title);
+          assert.equal(doc1.title, 'optional callback 2');
+          assert.equal(doc2.title, 'orient expressions');
           done();
         }, done).end();
       });
@@ -144,8 +168,8 @@ describe('model', function() {
           assert.equal(docs.length, 2);
           var doc1 = docs[0];
           var doc2 = docs[1];
-          assert.equal('optional callback3', doc1.title);
-          assert.equal('3', doc2.title);
+          assert.equal(doc1.title, 'optional callback3');
+          assert.equal(doc2.title, '3');
           done();
         }, done).end();
       });
@@ -161,6 +185,15 @@ describe('model', function() {
             done();
           }).end();
         }, done).end();
+      });
+
+      it('if callback is falsy, will ignore it (gh-5061)', function(done) {
+        B.create({ title: 'test' }, null).
+          then(function(doc) {
+            assert.equal(doc.title, 'test');
+            done();
+          }).
+          catch(done);
       });
     });
   });

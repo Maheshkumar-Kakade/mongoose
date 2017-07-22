@@ -44,7 +44,7 @@ describe('model', function() {
             }
           });
 
-          assert.equal(4, assertions);
+          assert.equal(assertions, 4);
           db.close(done);
         });
       });
@@ -86,7 +86,7 @@ describe('model', function() {
             indexes[i].forEach(iter);
           }
 
-          assert.equal(3, assertions);
+          assert.equal(assertions, 3);
           db.close(done);
         });
       });
@@ -135,7 +135,7 @@ describe('model', function() {
             indexes[i].forEach(iter);
           }
 
-          assert.equal(5, assertions);
+          assert.equal(assertions, 5);
           db.close(done);
         });
       });
@@ -172,10 +172,53 @@ describe('model', function() {
           }
 
           db.close();
-          assert.equal(2, found);
+          assert.equal(found, 2);
           done();
         });
       });
+    });
+
+    it('nested embedded docs (gh-5199)', function(done) {
+      var SubSubSchema = mongoose.Schema({
+        nested2: String
+      });
+
+      SubSubSchema.index({ nested2: 1 });
+
+      var SubSchema = mongoose.Schema({
+        nested1: String,
+        subSub: SubSubSchema
+      });
+
+      SubSchema.index({ nested1: 1 });
+
+      var ContainerSchema = mongoose.Schema({
+        nested0: String,
+        sub: SubSchema
+      });
+
+      ContainerSchema.index({ nested0: 1 });
+
+      assert.deepEqual(ContainerSchema.indexes().map(function(v) { return v[0]; }), [
+        { 'sub.subSub.nested2': 1 },
+        { 'sub.nested1': 1 },
+        { 'nested0': 1 }
+      ]);
+
+      done();
+    });
+
+    it('primitive arrays (gh-3347)', function(done) {
+      var schema = new Schema({
+        arr: [{ type: String, unique: true }]
+      });
+
+      var indexes = schema.indexes();
+      assert.equal(indexes.length, 1);
+      assert.deepEqual(indexes[0][0], { arr: 1 });
+      assert.ok(indexes[0][1].unique);
+
+      done();
     });
 
     it('error should emit on the model', function(done) {
@@ -183,16 +226,17 @@ describe('model', function() {
           schema = new Schema({name: {type: String}}),
           Test = db.model('IndexError', schema, 'x' + random());
 
-      Test.on('index', function(err) {
-        db.close();
-        assert.ok(/E11000 duplicate key error/.test(err.message), err);
-        done();
-      });
-
       Test.create({name: 'hi'}, {name: 'hi'}, function(err) {
         assert.strictEqual(err, null);
         Test.schema.index({name: 1}, {unique: true});
         Test.schema.index({other: 1});
+
+        Test.on('index', function(err) {
+          db.close();
+          assert.ok(/E11000 duplicate key error/.test(err.message), err);
+          done();
+        });
+
         Test.init();
       });
     });
@@ -233,7 +277,7 @@ describe('model', function() {
             assert.ok(true, 'Model.ensureIndexes() was called');
             Test.collection.getIndexes(function(err, indexes) {
               assert.ifError(err);
-              assert.equal(2, Object.keys(indexes).length);
+              assert.equal(Object.keys(indexes).length, 2);
               db.close(done);
             });
           });
@@ -320,7 +364,7 @@ describe('model', function() {
       it('is a function', function(done) {
         var schema = mongoose.Schema({x: 'string'});
         var Test = mongoose.createConnection().model('ensureIndexes-' + random, schema);
-        assert.equal('function', typeof Test.ensureIndexes);
+        assert.equal(typeof Test.ensureIndexes, 'function');
         done();
       });
 
